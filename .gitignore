@@ -6,3 +6,6 @@ coverage
 src/storage/**/*.pdf
 src/storage/**/*.csv
 !.gitkeep
+# root docs rule
+/*.md
+!/README.md
