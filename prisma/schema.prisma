@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DEVELOPER
+  VIEWER
+}
+
+enum JobType {
+  GENERATE_INVOICE
+  SEND_EMAIL
+  SEND_WEBHOOK
+  EXPORT_REPORT
+}
+
+enum JobStatus {
+  QUEUED
+  DELAYED
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRYING
+  CANCELLED
+  DEAD_LETTER
+}
+
+enum AttemptStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String         @id @default(cuid())
+  name         String
+  email        String         @unique
+  passwordHash String         @map("password_hash")
+  role         Role           @default(DEVELOPER)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  refreshTokens RefreshToken[]
+  jobs         Job[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @map("token_hash")
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Job {
+  id             String       @id @default(cuid())
+  type           JobType
+  status         JobStatus    @default(QUEUED)
+  priority       Int          @default(5)
+  payload        Json
+  payloadHash    String       @map("payload_hash")
+  result         Json?
+  errorCode      String?      @map("error_code")
+  errorMessage   String?      @map("error_message")
+  attempts       Int          @default(0)
+  maxAttempts    Int          @default(3) @map("max_attempts")
+  idempotencyKey String?      @map("idempotency_key")
+  createdById    String       @map("created_by_id")
+  scheduledAt    DateTime?    @map("scheduled_at")
+  startedAt      DateTime?    @map("started_at")
+  completedAt    DateTime?    @map("completed_at")
+  failedAt       DateTime?    @map("failed_at")
+  cancelledAt    DateTime?    @map("cancelled_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  jobAttempts    JobAttempt[]
+  events         JobEvent[]
+  idempotency    IdempotencyKey?
+
+  @@index([status])
+  @@index([type])
+  @@index([createdById])
+  @@map("jobs")
+}
+
+model JobAttempt {
+  id            String        @id @default(cuid())
+  jobId         String        @map("job_id")
+  attemptNumber Int           @map("attempt_number")
+  status        AttemptStatus
+  startedAt     DateTime      @map("started_at")
+  finishedAt    DateTime?     @map("finished_at")
+  durationMs    Int?          @map("duration_ms")
+  errorCode     String?       @map("error_code")
+  errorMessage  String?       @map("error_message")
+  workerName    String        @map("worker_name")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  job           Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("job_attempts")
+}
+
+model JobEvent {
+  id        String   @id @default(cuid())
+  jobId     String   @map("job_id")
+  eventType String   @map("event_type")
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("job_events")
+}
+
+model Worker {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  status      String
+  concurrency Int
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("workers")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  action    String
+  resource  String
+  resourceId String? @map("resource_id")
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+model IdempotencyKey {
+  key         String   @id
+  requestHash String   @map("request_hash")
+  jobId       String   @unique @map("job_id")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("idempotency_keys")
+}
