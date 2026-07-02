@@ -45,7 +45,11 @@ export async function buildApp() {
   app.post('/api/v1/queues/default/clean', { preHandler: requireAdmin }, async () => ok('Queue cleaned successfully', { completed: await jobQueue.clean(0, 1000, 'completed'), failed: await jobQueue.clean(0, 1000, 'failed') }));
   app.get('/api/v1/audit-logs', { preHandler: requireAdmin }, async () => ok('Data retrieved successfully', await prisma.auditLog.findMany({ orderBy:{ createdAt:'desc' }, take:100 })));
   app.get('/api/v1/workers', { preHandler: requireAdmin }, async () => ok('Data retrieved successfully', await prisma.worker.findMany({ orderBy:{ updatedAt:'desc' } })));
-  app.get('/api/v1/workers/:id', { preHandler: requireAdmin }, async (req:any) => ok('Data retrieved successfully', await prisma.worker.findUniqueOrThrow({ where:{ id:req.params.id } })));
+  app.get('/api/v1/workers/:id', { preHandler: requireAdmin }, async (req:any) => {
+    const worker = await prisma.worker.findUnique({ where:{ id:req.params.id } });
+    if (!worker) throw new AppError(404, 'NOT_FOUND', 'Worker not found');
+    return ok('Data retrieved successfully', worker);
+  });
   app.get('/api/v1/dead-letter', { preHandler: requireAdmin }, async () => ok('Data retrieved successfully', await prisma.job.findMany({ where:{ status:'DEAD_LETTER' }, orderBy:{ failedAt:'desc' }, take:100 })));
   return app;
 }
