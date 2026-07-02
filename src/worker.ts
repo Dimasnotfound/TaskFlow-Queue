@@ -6,9 +6,9 @@ import { processJob } from './processors/index.js';
 import { AppError } from './shared/errors.js';
 
 await prisma.worker.upsert({ where:{ name:env.WORKER_NAME }, update:{ status:'RUNNING', concurrency:env.WORKER_CONCURRENCY, lastHeartbeatAt:new Date() }, create:{ name:env.WORKER_NAME, status:'RUNNING', concurrency:env.WORKER_CONCURRENCY, lastHeartbeatAt:new Date() } });
-setInterval(() => prisma.worker.update({ where:{ name:env.WORKER_NAME }, data:{ lastHeartbeatAt:new Date() } }).catch(()=>undefined), 10000);
+const heartbeat = setInterval(() => prisma.worker.update({ where:{ name:env.WORKER_NAME }, data:{ lastHeartbeatAt:new Date() } }).catch(()=>undefined), 10000);
 
-new Worker(env.DEFAULT_QUEUE_NAME, async (bullJob) => {
+const worker = new Worker(env.DEFAULT_QUEUE_NAME, async (bullJob) => {
   const job = await prisma.job.findUniqueOrThrow({ where:{ id:bullJob.data.jobId } });
   if (job.status === 'CANCELLED') return null;
   const startedAt = new Date();
@@ -27,3 +27,15 @@ new Worker(env.DEFAULT_QUEUE_NAME, async (bullJob) => {
     throw err;
   }
 }, { connection, concurrency:env.WORKER_CONCURRENCY });
+
+async function shutdown(signal:string) {
+  clearInterval(heartbeat);
+  await worker.close();
+  await prisma.worker.update({ where:{ name:env.WORKER_NAME }, data:{ status:'STOPPED', lastHeartbeatAt:new Date() } }).catch(()=>undefined);
+  await prisma.$disconnect();
+  console.log(`Worker stopped by ${signal}`);
+  process.exit(0);
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));

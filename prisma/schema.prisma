@@ -78,6 +78,8 @@ model Job {
   attempts       Int          @default(0)
   maxAttempts    Int          @default(3) @map("max_attempts")
   idempotencyKey String?      @map("idempotency_key")
+  currentQueueJobId String?   @map("current_queue_job_id")
+  manualRetryCount Int        @default(0) @map("manual_retry_count")
   createdById    String       @map("created_by_id")
   scheduledAt    DateTime?    @map("scheduled_at")
   startedAt      DateTime?    @map("started_at")
@@ -94,6 +96,10 @@ model Job {
   @@index([status])
   @@index([type])
   @@index([createdById])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([type, status])
+  @@index([createdById, status])
   @@map("jobs")
 }
 
