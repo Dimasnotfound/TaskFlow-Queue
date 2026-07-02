@@ -1,7 +1,7 @@
 import * as argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../../config/prisma.js';
-import { conflict, unauthorized } from '../../shared/errors.js';
+import { conflict, notFound, unauthorized } from '../../shared/errors.js';
 import { tokenHash } from '../../shared/hash.js';
 
 export class AuthService {
@@ -24,4 +24,9 @@ export class AuthService {
     return { accessToken: jwt.sign({ id:row.user.id, role:row.user.role }, { expiresIn:'15m' }) };
   }
   async logout(refreshToken:string) { await prisma.refreshToken.updateMany({ where:{ tokenHash:tokenHash(refreshToken) }, data:{ revokedAt:new Date() } }); }
+  async me(userId:string) {
+    const user = await prisma.user.findUnique({ where:{ id:userId }, select:{ id:true, name:true, email:true, role:true, createdAt:true, updatedAt:true } });
+    if (!user) throw notFound('NOT_FOUND','User not found');
+    return user;
+  }
 }
